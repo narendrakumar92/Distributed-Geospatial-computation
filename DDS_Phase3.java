@@ -1,20 +1,12 @@
 
-import org.apache.spark.SparkConf;
+import java.io.*;
+import java.util.*;
 import org.apache.spark.api.java.*;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import scala.Tuple2;
-
-
-import java.awt.*;
-import java.io.*;
-import java.util.*;
-import java.util.Iterator;
-import java.util.List;
-
 
 
 public class DDS_Phase3
@@ -31,19 +23,11 @@ public class DDS_Phase3
     final static double lonMax = -73.70;
     final static double distRange = 0.01;
     final static int days = 31;
-    final static int daysRange = 1;
     final static int numLats = (int) ((latMax - latMin + 0.01) / distRange);
     final static int numLons = (int) Math.abs((lonMax - lonMin + 0.01) / distRange);
     final static int numDays = days;
     final static int totalCells = numLats * numLons * numDays;
     static int[][][] attributeMatrix = new int[numLats][numLons][numDays];
-    static double total_sum_attribute_matrix = 0.0;
-    static double[][][] zScoreMatrix = new double[numLats][numLons][numDays];
-    static List<Point> points_50 = new ArrayList<Point>();
-    static boolean flag;
-    //static double[][][] zScoreMatrix = new double[numLats][numLons][numDays];
-    //static List<Point> points_50 = new ArrayList<Point>();
-    //static double total_sum_attribute_matrix = 0.0;
 
     public DDS_Phase3(JavaSparkContext jsc, String f1, String f2) {
         try {
@@ -58,17 +42,14 @@ public class DDS_Phase3
 
                 }
             });
-            flag = false;
             sc = jsc;
             inputFile = f1;
             outputFile = f2;
             mapReduce();
             calculateZscore();
-            printAttributeMatrix();
-             printZScoreMatrix();
 
-            writeToFile(f2);
-            printpq();
+           Filewrite(f2);
+           // printpq();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -82,58 +63,35 @@ public class DDS_Phase3
         int count=0;
         while(!pq.isEmpty() && count<50){
             Node n = pq.poll();
-          //  if(n.score>20)
-            System.out.println(n.date +" " +(n.latitude+(latMin*100)) +" " +(n.longitude+(lonMin*100)) +" " +n.score);
             count++;
+            System.out.println(((n.latitude+latMin*100)/100) +" "+((n.longitude+lonMin*100)/100)+" " +n.date +" " +n.score);
         }
         System.out.println(count);
 
-        /*Iterator<Node> itr = pq.iterator();
-        while(itr.hasNext()){
-            Node n = itr.next();
-            if(n.score>10)
-            System.out.println(n.date +" " +(n.latitude+(latMin*100)) +" " +(n.longitude+(lonMin*100)) +" " +n.score);
-            count++;
-        }
-        System.out.println(count);*/
+
     }
 
-    public static void writeToFile(String filename) {
+    public static void Filewrite(String filename) {
         try {
-            System.out.println(points_50.size());
             File file = new File(filename);
             FileWriter fileWriter = new FileWriter(file);
             StringBuffer sb = new StringBuffer();
-            for (Point p : points_50) {
-                sb.append(p.toString() + "\n");
+
+            int count=0;
+            while(!pq.isEmpty() && count<50){
+                Node n = pq.poll();
+                count++;
+                sb.append(String.valueOf((n.latitude+latMin*100)/100) +","+String.valueOf((n.longitude+lonMin*100)/100)+"," +String.valueOf(n.date) +"," +String.valueOf(n.score)+"\n");
             }
             fileWriter.write(sb.toString());
-            fileWriter.flush();
             fileWriter.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void printZScoreMatrix() {
-        for (int i = 0; i < numLats; i++) {
-            for (int j = 0; j < numLons; j++) {
-                System.out.printf("%.2f ", zScoreMatrix[i][j][1]);
-            }
-            System.out.println();
-        }
-    }
 
-    private static void printAttributeMatrix() {
-        for (int i = 0; i < numLats; i++) {
-            for (int j = 0; j < numLons; j++) {
-                System.out.print(attributeMatrix[i][j][0]);
-            }
-            System.out.println();
-        }
-    }
 
-    @SuppressWarnings("unchecked")
     public static void mapReduce() {
         final JavaRDD<String> csvData = sc.textFile(inputFile);
 
@@ -145,7 +103,7 @@ public class DDS_Phase3
                 {
                     String[] coordinate = line.split(",");
                 //System.out.println("coord0:" + coordinate[0]);
-                int date = Integer.parseInt(coordinate[1].split("-|/|\\s+")[2]);
+                int date = Integer.parseInt(coordinate[1].split("/")[1]);
                 System.out.println("date:" + date);
                 double lat = Double.parseDouble(coordinate[6]);
                 double lon = Double.parseDouble(coordinate[5]);
@@ -196,25 +154,15 @@ public class DDS_Phase3
     private static void calculateZscore() {
         double mean = calculateMean();
         double variance = calculateVariance(mean);
-        ArrayList<Point> l = new ArrayList<Point>();
         for (int i = 0; i < numLats; i++) {
             for (int j = 0; j < numLons; j++) {
                 for (int k = 0; k < numDays; k++) {
                     double score = numerator(i, j, k, mean) / denominator(i, j, k, variance);
-                    zScoreMatrix[i][j][k] = score;
                     insert(new Node(i, j, k, score));
-                    l.add(new Point(i, j, k, score));
                 }
             }
         }
 
-        Collections.sort(l, Collections.<Point> reverseOrder());
-        for (int i = 0; i < 50; i++) {
-            Point p = l.get(i);
-            points_50.add(p);
-            System.out.print(l.get(i) + " attributeValue: " + attributeMatrix[p.x][p.y][p.z] + "\n");
-        }
-        System.out.println(total_sum_attribute_matrix);
 
 
 
@@ -231,7 +179,6 @@ public class DDS_Phase3
             }
         }
         System.out.println("MEAN: " + sum / totalCells);
-        total_sum_attribute_matrix = sum;
         return sum / totalCells;
     }
 
@@ -244,15 +191,16 @@ public class DDS_Phase3
                 }
             }
         }
-        System.out.println("VARIANCE: " + Math.sqrt((variance / totalCells) - (mean * mean)));
+        //System.out.println("VARIANCE: " + Math.sqrt((variance / totalCells) - (mean * mean)));
         return Math.sqrt((variance / totalCells) - (mean * mean));
     }
 
     public static double numerator(int i, int j, int k, double mean) {
         double n = 0.0;
         int sigmaW = adjacentCubes_sigmaW(i, j, k);
-        int sigmaWX = totalPointsInaAdjacentCells_sigmaWX(i, j, k);
-        n = sigmaWX - (mean * sigmaW);
+
+        int adj_count = Adj_Compute_Neighbors(i, j, k);
+        n = adj_count - (mean * sigmaW);
         return n;
     }
 
@@ -267,63 +215,24 @@ public class DDS_Phase3
     }
 
 
-    public static int totalPointsInaAdjacentCells_sigmaWX(int i, int j, int k) {
 
-        int count = 0;
-        // --------------k-1 th layer------------------------
 
-        List<int[]> l = new ArrayList<int[]>();
+    public static int Adj_Compute_Neighbors(int dim1, int dim2, int dim3) {
+        int sumX = 0;
 
-        l.add(new int[] { i - 1, j + 1, k - 1 });
-        l.add(new int[] { i, j + 1, k - 1 });
-        l.add(new int[] { i + 1, j + 1, k - 1 });
-
-        l.add(new int[] { i - 1, j, k - 1 });
-        l.add(new int[] { i, j, k - 1 });
-        l.add(new int[] { i + 1, j, k - 1 });
-
-        l.add(new int[] { i - 1, j - 1, k - 1 });
-        l.add(new int[] { i, j - 1, k - 1 });
-        l.add(new int[] { i + 1, j - 1, k - 1 });
-
-        // --------------k th layer------------------------
-        l.add(new int[] { i - 1, j + 1, k });
-        l.add(new int[] { i, j + 1, k });
-        l.add(new int[] { i + 1, j + 1, k });
-
-        l.add(new int[] { i - 1, j, k });
-        l.add(new int[] { i, j, k });
-        l.add(new int[] { i + 1, j, k });
-
-        l.add(new int[] { i - 1, j - 1, k });
-        l.add(new int[] { i, j - 1, k });
-        l.add(new int[] { i + 1, j - 1, k });
-
-        // --------------k+1 th layer------------------------
-
-        l.add(new int[] { i - 1, j + 1, k + 1 });
-        l.add(new int[] { i, j + 1, k + 1 });
-        l.add(new int[] { i + 1, j + 1, k + 1 });
-
-        l.add(new int[] { i - 1, j, k + 1 });
-        l.add(new int[] { i, j, k + 1 });
-        l.add(new int[] { i + 1, j, k + 1 });
-
-        l.add(new int[] { i - 1, j - 1, k + 1 });
-        l.add(new int[] { i, j - 1, k + 1 });
-        l.add(new int[] { i + 1, j - 1, k + 1 });
-
-        for (int[] p : l) {
-            int ii = p[0];
-            int jj = p[1];
-            int kk = p[2];
-
-            if (ii < 0 || jj < 0 || kk < 0 || ii >= numLats || jj >= numLons || kk >= numDays)
-                continue;
-            count += attributeMatrix[ii][jj][kk];
+        for(int x=dim1-1;x<dim1+2;x++)
+        {
+            for(int y=dim2-1;y<dim2+2;y++)
+            {
+                for(int z=dim3-1;z<dim3+2;z++)
+                {
+                    if(x>=0 && x<numLats && y>=0 && y<numLons && z>=0 && z<numDays)
+                        sumX = sumX + attributeMatrix[x][y][z];
+                }
+            }
         }
 
-        return count;
+        return sumX;
     }
 
 
@@ -383,54 +292,6 @@ public class DDS_Phase3
 
 
 
-
-    static class Point implements Comparable {
-        int x;
-        int y;
-        int z;
-        double score;
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o)
-                return true;
-            if (o == null || getClass() != o.getClass())
-                return false;
-
-            Point point = (Point) o;
-
-            return Double.compare(point.score, score) == 0;
-
-        }
-
-        @Override
-        public int hashCode() {
-            long temp = Double.doubleToLongBits(score);
-            return (int) (temp ^ (temp >>> 32));
-        }
-
-        @Override
-        public String toString() {
-            return (int) (x + latMin * 100) + "," + (int) (y + lonMin * 100) + "," + z + "," + score;
-        }
-
-        public int compareTo(Object o) {
-            if (this.score > ((Point) o).score)
-                return 1;
-            else if (this.score < ((Point) o).score)
-                return -1;
-            return 0;
-
-        }
-
-        Point(int i, int j, int k, double s) {
-            x = i;
-            y = j;
-            z = k;
-            score = s;
-        }
-
-    }
 }
 
 

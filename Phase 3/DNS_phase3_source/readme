@@ -1,0 +1,10 @@
+Instruction to run the program:
+
+Main Class: DDS_Phase3
+
+Command to run: 
+
+Navigate to spark/bin folder and execute the following command
+
+./spark-submit --class DDS_Phase3 [Path_To_Jar_File]/DNS_phase3.jar [Input_Path] [Output_Path]
+
